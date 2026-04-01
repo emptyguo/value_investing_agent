@@ -1,0 +1,42 @@
+{
+  "companies": [
+    {
+      "id": "tme",
+      "name": "腾讯音乐娱乐",
+      "symbol": "01698",
+      "market": "HK",
+      "aliases": [
+        "腾讯音乐",
+        "TME",
+        "tme",
+        "01698",
+        "1698"
+      ],
+      "brands": [
+        "QQ音乐",
+        "酷狗音乐",
+        "酷我音乐",
+        "全民K歌"
+      ],
+      "competitors": [
+        "网易云音乐",
+        "汽水音乐",
+        "Apple Music",
+        "Spotify",
+        "喜马拉雅"
+      ],
+      "industry_keywords": [
+        "在线音乐",
+        "音乐版权",
+        "付费订阅",
+        "直播打赏"
+      ],
+      "parent": "tencent",
+      "enabled_sources": [
+        "cls",
+        "em"
+      ],
+      "schedule_profile": "cls_high_em_low"
+    }
+  ]
+}

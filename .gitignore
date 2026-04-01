@@ -1,0 +1,15 @@
+# API keys / server config
+openclaw.json
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

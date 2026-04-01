@@ -1,0 +1,96 @@
+{
+  "doc_types": [
+    {
+      "id": "annual",
+      "dir": "filings/annual",
+      "credibility": "L1",
+      "label": "年报",
+      "keywords": ["年报", "annual report", "10-K"]
+    },
+    {
+      "id": "quarterly",
+      "dir": "filings/quarterly",
+      "credibility": "L1",
+      "label": "季报/中报",
+      "keywords": ["季报", "中报", "半年报", "10-Q", "quarterly"]
+    },
+    {
+      "id": "announcements",
+      "dir": "filings/announcements",
+      "credibility": "L1",
+      "label": "公告",
+      "keywords": ["公告", "回购", "增发", "分红", "announcement"]
+    },
+    {
+      "id": "earnings_calls",
+      "dir": "transcripts/earnings_calls",
+      "credibility": "L2",
+      "label": "业绩会/电话会",
+      "keywords": ["业绩会", "电话会", "earnings call", "conference call", "业绩说明"]
+    },
+    {
+      "id": "roadshows",
+      "dir": "transcripts/roadshows",
+      "credibility": "L2",
+      "label": "路演/投资者日",
+      "keywords": ["路演", "投资者日", "roadshow", "investor day"]
+    },
+    {
+      "id": "sellside_initiation",
+      "dir": "sellside/initiation",
+      "credibility": "L3",
+      "label": "首次覆盖",
+      "keywords": ["首次覆盖", "initiation", "首覆"]
+    },
+    {
+      "id": "sellside_update",
+      "dir": "sellside/update",
+      "credibility": "L3",
+      "label": "卖方研报",
+      "keywords": ["研报", "评级", "target price", "券商", "卖方", "broker"]
+    },
+    {
+      "id": "sellside_industry",
+      "dir": "sellside/industry",
+      "credibility": "L3",
+      "label": "行业报告",
+      "keywords": ["行业报告", "行业研究", "industry report"]
+    },
+    {
+      "id": "expert_calls",
+      "dir": "primary/expert_calls",
+      "credibility": "L4",
+      "label": "专家访谈",
+      "keywords": ["专家", "expert call", "专家访谈"]
+    },
+    {
+      "id": "channel_checks",
+      "dir": "primary/channel_checks",
+      "credibility": "L4",
+      "label": "渠道调研",
+      "keywords": ["渠道", "经销商", "供应商", "前员工", "channel check"]
+    },
+    {
+      "id": "site_visits",
+      "dir": "primary/site_visits",
+      "credibility": "L4",
+      "label": "实地调研",
+      "keywords": ["调研", "实地", "工厂参观", "site visit"]
+    },
+    {
+      "id": "rumors",
+      "dir": "unofficial/rumors",
+      "credibility": "L5",
+      "label": "传闻",
+      "keywords": ["传闻", "消息", "据说", "据悉", "听说", "rumor"]
+    },
+    {
+      "id": "internal",
+      "dir": "unofficial/internal",
+      "credibility": "L5",
+      "label": "内部信息",
+      "keywords": ["内部人士", "知情人", "internal"]
+    }
+  ],
+  "default_doc_type": "announcements"
+}
