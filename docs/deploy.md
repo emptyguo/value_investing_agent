@@ -8,12 +8,13 @@
 
 ## 1. 部署 Skills
 
-当前仓库中需要同步的 `invest-*` skills 共 7 个：
+当前仓库中需要同步的 `invest-*` skills 共 8 个：
 
 - `invest-news`
 - `invest-ingest`
 - `invest-doc-router`
 - `invest-pdf-parser`
+- `invest-lark-cli`
 - `invest-digest`
 - `invest-analysis`
 - `invest-review`
@@ -26,10 +27,15 @@ rsync -a --exclude='__pycache__' skills/ templates/skills/
 
 部署目录：`/root/.openclaw/workspace/skills`
 
-安装 PDF 解析依赖：
+安装依赖：
 
 ```bash
+# PDF 解析
 pip install opendataloader-pdf
+
+# 飞书 CLI（invest-lark-cli 依赖）
+npm install -g @larksuite/cli
+lark-cli auth login --recommend
 ```
 
 验证：
@@ -41,6 +47,7 @@ ls ~/.openclaw/workspace/skills/invest-*
 # invest-digest
 # invest-doc-router
 # invest-ingest
+# invest-lark-cli
 # invest-news
 # invest-pdf-parser
 # invest-review
@@ -53,6 +60,7 @@ mkdir -p /root/.openclaw/workspace/data/references
 mkdir -p /root/.openclaw/workspace/data/news/raw
 mkdir -p /root/.openclaw/workspace/data/books
 mkdir -p /root/.openclaw/workspace/data/companies
+mkdir -p /root/.openclaw/workspace/data/industry/unclassified/lark
 
 # doc_types.json 是公共分类规则，每次部署覆盖
 cp workspace_data/references/doc_types.json /root/.openclaw/workspace/data/references/
@@ -77,6 +85,7 @@ cp workspace_data/references/doc_types.json /root/.openclaw/workspace/data/refer
 - `/root/.openclaw/workspace/data/news/raw/`
 - `/root/.openclaw/workspace/data/companies/`
 - `/root/.openclaw/workspace/data/books/`
+- `/root/.openclaw/workspace/data/industry/unclassified/lark/`
 
 ## 3. Provision Agent Workspace
 
@@ -85,11 +94,16 @@ cp workspace_data/references/doc_types.json /root/.openclaw/workspace/data/refer
 新增 agent 只需在 `openclaw.json` 中添加条目，然后重新执行以下步骤。
 
 ```bash
-for AGENT_ID in value_guo value_tianxiong value_qingfeng value_weichao; do
+for AGENT_ID in mifeng_corporate_hub value_guo value_tianxiong value_qingfeng value_weichao value_liaobin; do
   WORKSPACE=/root/.openclaw/workspace/agents/$AGENT_ID
 
   # 3a. 创建目录结构
   mkdir -p $WORKSPACE/{domains,views,memory}
+
+  # 3a-extra. mifeng_corporate_hub 专用目录
+  if [ "$AGENT_ID" = "mifeng_corporate_hub" ]; then
+    mkdir -p $WORKSPACE/lark_sync/{staging,state,logs}
+  fi
 
   # 3b. 模板文件（每次覆盖）
   cp templates/AGENTS.md $WORKSPACE/
@@ -116,21 +130,22 @@ done
 当前线上配置中的 Agent 与 workspace 为：
 
 - `assistant` -> `/root/.openclaw/workspace`
-- `fa-tuoshui` -> `/root/.openclaw/workspace`
+- `mifeng_corporate_hub` -> `/root/.openclaw/workspace/agents/mifeng_corporate_hub`
 - `value_guo` -> `/root/.openclaw/workspace/agents/value_guo`
 - `value_tianxiong` -> `/root/.openclaw/workspace/agents/value_tianxiong`
 - `value_weichao` -> `/root/.openclaw/workspace/agents/value_weichao`
 - `value_qingfeng` -> `/root/.openclaw/workspace/agents/value_qingfeng`
+- `value_liaobin` -> `/root/.openclaw/workspace/agents/value_liaobin`
 
 当前线上实际注册的 skills 以 `openclaw.json` 为准：
 
 - `assistant`: `ontology`, `self-improving-agent`, `gateway`, `feishu_doc`, `feishu_chat`, `feishu_calendar`, `invest-pdf-parser`, `invest-news`, `invest-ingest`, `invest-doc-router`
-- `fa-tuoshui`: `fa-intelligence`, `invest-pdf-parser`
+- `mifeng_corporate_hub`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-lark-cli`, `invest-digest`, `invest-analysis`, `invest-review`
 - `value_*`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-digest`, `invest-analysis`, `invest-review`
 
 说明：
 
-- 当前仓库中的 7 个 `invest-*` skills 已全部部署到 `~/.openclaw/workspace/skills/`。
+- 当前仓库中的 8 个 `invest-*` skills 已全部部署到 `~/.openclaw/workspace/skills/`。
 - 当前线上真正注册到 agent 的技能集合以 `openclaw.json` 为准；新增或移除技能时，需同步更新该文件后再发布配置。
 
 ## 5. 校验 bindings 与 Feishu accounts
@@ -143,15 +158,17 @@ done
 
 当前线上投资 agent 相关账号名应为：
 
+- `mifeng_corporate_hub`
 - `value_guo`
 - `value_tianxiong`
 - `value_weichao`
 - `value_qingfeng`
+- `value_liaobin`
 
 ## 6. 验证
 
 ```bash
-for agent in value_guo value_tianxiong value_qingfeng value_weichao; do
+for agent in mifeng_corporate_hub value_guo value_tianxiong value_qingfeng value_weichao value_liaobin; do
   echo "=== $agent ==="
   ls /root/.openclaw/workspace/agents/$agent/
 done

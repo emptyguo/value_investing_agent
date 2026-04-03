@@ -19,11 +19,11 @@
         "全民K歌"
       ],
       "competitors": [
-        "网易云音乐",
-        "汽水音乐",
-        "Apple Music",
-        "Spotify",
-        "喜马拉雅"
+        "netease_music",
+        "qishui",
+        "apple_music",
+        "spotify",
+        "ximalaya"
       ],
       "industry_keywords": [
         "在线音乐",
@@ -31,12 +31,73 @@
         "付费订阅",
         "直播打赏"
       ],
+      "industry_id": "music",
       "parent": "tencent",
       "enabled_sources": [
         "cls",
         "em"
       ],
       "schedule_profile": "cls_high_em_low"
+    },
+    {
+      "id": "netease_music",
+      "name": "网易云音乐",
+      "symbol": "09899",
+      "market": "HK",
+      "aliases": [
+        "网易云",
+        "网易云音乐",
+        "Cloud Music",
+        "09899",
+        "9899"
+      ],
+      "industry_id": "music",
+      "competitors": [
+        "tme"
+      ]
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "symbol": "SPOT",
+      "market": "US",
+      "aliases": [
+        "Spotify",
+        "SPOT",
+        "声学"
+      ],
+      "industry_id": "music",
+      "competitors": [
+        "tme",
+        "apple_music"
+      ]
+    },
+    {
+      "id": "qishui",
+      "name": "汽水音乐",
+      "aliases": [
+        "汽水音乐",
+        "汽水",
+        "番茄音乐"
+      ],
+      "industry_id": "music",
+      "parent": "bytedance",
+      "competitors": [
+        "tme",
+        "netease_music"
+      ]
+    },
+    {
+      "id": "ximalaya",
+      "name": "喜马拉雅",
+      "aliases": [
+        "喜马拉雅",
+        "Ximalaya"
+      ],
+      "industry_id": "music",
+      "competitors": [
+        "tme"
+      ]
     }
   ]
 }

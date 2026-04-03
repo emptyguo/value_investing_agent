@@ -7,7 +7,7 @@ from datetime import datetime
 
 def resolve_shared_data_root():
     script_dir = os.path.dirname(__file__)
-    runtime_candidate = os.path.abspath(os.path.join(script_dir, "../../../../data"))
+    runtime_candidate = "/root/.openclaw/workspace/data"
     if os.path.isdir(runtime_candidate):
         return runtime_candidate
     local_candidate = os.path.abspath(os.path.join(script_dir, "../../../workspace_data"))

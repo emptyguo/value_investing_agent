@@ -15,7 +15,7 @@ def resolve_default_data_root():
     script_dir = os.path.dirname(__file__)
 
     # Fallback 1: Production OpenClaw Workspace Data
-    runtime_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../../data/news"))
+    runtime_shared_candidate = "/root/.openclaw/workspace/data/news"
     if os.path.isdir(os.path.dirname(runtime_shared_candidate)):
         return runtime_shared_candidate
 
@@ -33,7 +33,7 @@ DATA_ROOT = os.environ.get("OPENCLAW_DATA_DIR", resolve_default_data_root())
 def resolve_company_dict_path():
     script_dir = os.path.dirname(__file__)
     # Production: ~/.openclaw/workspace/data/references/companies.json
-    runtime = os.path.abspath(os.path.join(script_dir, "../../../../data/references/companies.json"))
+    runtime = "/root/.openclaw/workspace/data/references/companies.json"
     if os.path.exists(runtime):
         return runtime
     # Local dev: <repo>/workspace_data/references/companies.json

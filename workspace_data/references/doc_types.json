@@ -1,5 +1,13 @@
 {
+  "source_subdir": "source",
   "doc_types": [
+    {
+      "id": "prospectus",
+      "dir": "filings/prospectus",
+      "credibility": "L1",
+      "label": "招股书",
+      "keywords": ["招股书", "招股说明书", "prospectus", "IPO"]
+    },
     {
       "id": "annual",
       "dir": "filings/annual",
@@ -36,6 +44,13 @@
       "keywords": ["路演", "投资者日", "roadshow", "investor day"]
     },
     {
+      "id": "meeting_minutes",
+      "dir": "transcripts/meeting_minutes",
+      "credibility": "L2",
+      "label": "纪要",
+      "keywords": ["纪要", "会议纪要", "meeting minutes", "纪要合集"]
+    },
+    {
       "id": "sellside_initiation",
       "dir": "sellside/initiation",
       "credibility": "L3",
@@ -48,6 +63,13 @@
       "credibility": "L3",
       "label": "卖方研报",
       "keywords": ["研报", "评级", "target price", "券商", "卖方", "broker"]
+    },
+    {
+      "id": "briefings",
+      "dir": "sellside/briefings",
+      "credibility": "L3",
+      "label": "简报",
+      "keywords": ["简报", "briefing", "速览", "要点"]
     },
     {
       "id": "sellside_industry",

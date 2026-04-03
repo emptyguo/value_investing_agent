@@ -7,7 +7,7 @@ from datetime import datetime
 def resolve_data_root():
     script_dir = os.path.dirname(__file__)
     # Production: ~/.openclaw/workspace/data
-    runtime_candidate = os.path.abspath(os.path.join(script_dir, "../../../../data"))
+    runtime_candidate = "/root/.openclaw/workspace/data"
     if os.path.isdir(runtime_candidate):
         return runtime_candidate
     # Local dev: <repo>/workspace_data
@@ -86,12 +86,13 @@ def to_note(item):
     }
 
 
-def append_timeline(company_id, ingest_date, raw_saved, notes_saved):
-    timeline_path = os.path.join(DATA_ROOT, "companies", company_id, "timeline.md")
+def append_timeline(root_subdir, entity_id, ingest_date, raw_saved, notes_saved):
+    """root_subdir: 'companies' or 'industry'"""
+    timeline_path = os.path.join(DATA_ROOT, root_subdir, entity_id, "timeline.md")
     os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
     if not os.path.exists(timeline_path):
         with open(timeline_path, "w", encoding="utf-8") as f:
-            f.write(f"# {company_id.capitalize()} Timeline\n\n")
+            f.write(f"# {entity_id.capitalize()} Timeline\n\n")
 
     entry = (
         f"- [{ingest_date}] news-ingest\n"
@@ -99,6 +100,35 @@ def append_timeline(company_id, ingest_date, raw_saved, notes_saved):
     )
     with open(timeline_path, "a", encoding="utf-8") as f:
         f.write(entry)
+
+
+def append_intake_log(root_subdir, entity_id, rows, ingest_date):
+    log_path = os.path.join(DATA_ROOT, root_subdir, entity_id, "intake_log.jsonl")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        for row in rows:
+            log_entry = {
+                "item_id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{entity_id}-news",
+                "ts": datetime.now().isoformat(),
+                "entity": entity_id,
+                "input_type": "news_stream",
+                "title": row.get("title"),
+                "url": row.get("url"),
+                "source": row.get("source"),
+                "doc_type": "news",
+                "credibility": "L6",
+                "ingest_date": ingest_date
+            }
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
+
+def load_company_industry_map():
+    path = os.path.join(DATA_ROOT, "references", "companies.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return {c["id"]: c.get("industry_id") for c in data.get("companies", []) if c.get("industry_id")}
 
 
 def main():
@@ -109,39 +139,62 @@ def main():
         print(f"No source rows found: {news_raw_path}")
         return 0
 
-    grouped = {}
+    # Load mapping
+    co_to_ind = load_company_industry_map()
+
+    grouped_co = {}
+    grouped_ind = {}
+    
     for item in items:
         company_id = item.get("company")
         if not company_id:
             continue
-        grouped.setdefault(company_id, []).append(item)
-
-    if not grouped:
-        print(f"No company-tagged rows found in: {news_raw_path}")
-        return 0
+        
+        # Route to company
+        grouped_co.setdefault(company_id, []).append(item)
+        
+        # Route to industry if applicable
+        if item.get("match_type") == "industry":
+            industry_id = co_to_ind.get(company_id)
+            if industry_id:
+                grouped_ind.setdefault(industry_id, []).append(item)
 
     total_raw_saved = 0
-    total_notes_saved = 0
-    for company_id, rows in grouped.items():
-        company_root = os.path.join(DATA_ROOT, "companies", company_id)
-        # Write to news/ subdirectory, not root
-        raw_target = os.path.join(company_root, "news", "raw", f"{args.date}.jsonl")
-        notes_target = os.path.join(company_root, "news", "notes", f"{args.date}.jsonl")
+    
+    # Process Companies
+    for company_id, rows in grouped_co.items():
+        target_dir = os.path.join(DATA_ROOT, "companies", company_id)
+        raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
+        notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
 
         fp_keys = ["ts", "source", "title", "url", "company"]
         raw_saved = append_jsonl_dedup(raw_target, rows, fingerprint_keys=fp_keys)
         notes_saved = append_jsonl_dedup(
             notes_target, [to_note(x) for x in rows], fingerprint_keys=fp_keys
         )
-        append_timeline(company_id, args.date, raw_saved, notes_saved)
+        append_timeline("companies", company_id, args.date, raw_saved, notes_saved)
+        if raw_saved > 0:
+            append_intake_log("companies", company_id, rows, args.date)
         total_raw_saved += raw_saved
-        total_notes_saved += notes_saved
-        print(f"[{company_id}] raw_saved={raw_saved} notes_saved={notes_saved}")
+        print(f"[Company: {company_id}] raw_saved={raw_saved}")
 
-    print(
-        f"Ingest completed for {args.date}: companies={len(grouped)} "
-        f"total_raw_saved={total_raw_saved} total_notes_saved={total_notes_saved}"
-    )
+    # Process Industries
+    for industry_id, rows in grouped_ind.items():
+        target_dir = os.path.join(DATA_ROOT, "industry", industry_id)
+        raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
+        notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
+
+        fp_keys = ["ts", "source", "title", "url"] # Less strict for industry dedup
+        raw_saved = append_jsonl_dedup(raw_target, rows, fingerprint_keys=fp_keys)
+        notes_saved = append_jsonl_dedup(
+            notes_target, [to_note(x) for x in rows], fingerprint_keys=fp_keys
+        )
+        append_timeline("industry", industry_id, args.date, raw_saved, notes_saved)
+        if raw_saved > 0:
+            append_intake_log("industry", industry_id, rows, args.date)
+        print(f"[Industry: {industry_id}] raw_saved={raw_saved}")
+
+    print(f"Ingest completed for {args.date}: total_raw_saved={total_raw_saved}")
     return 0
 
 

@@ -15,7 +15,7 @@ def resolve_default_data_root():
     script_dir = os.path.dirname(__file__)
 
     # Fallback 1: Production OpenClaw Workspace Data
-    runtime_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../../data/news"))
+    runtime_shared_candidate = "/root/.openclaw/workspace/data/news"
     if os.path.isdir(os.path.dirname(runtime_shared_candidate)):
         return runtime_shared_candidate
 
@@ -33,7 +33,7 @@ DATA_ROOT = os.environ.get("OPENCLAW_DATA_DIR", resolve_default_data_root())
 def resolve_company_dict_path():
     script_dir = os.path.dirname(__file__)
     # Production: ~/.openclaw/workspace/data/references/companies.json
-    runtime = os.path.abspath(os.path.join(script_dir, "../../../../data/references/companies.json"))
+    runtime = "/root/.openclaw/workspace/data/references/companies.json"
     if os.path.exists(runtime):
         return runtime
     # Local dev: <repo>/workspace_data/references/companies.json
@@ -197,69 +197,17 @@ def fetch_em_news(company_meta):
     return results
 
 
-def fetch_cls_news(company_meta):
-    """
-    财联社滚动电报（按 subject 定向过滤）。
-    """
-    results = []
-    try:
-        cls_news = ak.stock_info_global_cls(symbol="全部")
-        
-        # 收集所有维度的关键词来做 Pandas 过滤
-        keywords = [company_meta["name"], company_meta["symbol"]] + company_meta.get("aliases", []) + \
-                   company_meta.get("brands", []) + company_meta.get("competitors", []) + \
-                   company_meta.get("industry_keywords", [])
-        keywords = [str(k).strip() for k in keywords if str(k).strip()]
-        
-        masks = [
-            cls_news["标题"].str.contains(k, na=False, regex=False)
-            | cls_news["内容"].str.contains(k, na=False, regex=False)
-            for k in keywords
-        ]
-        if not masks:
-            return results
-            
-        mask = masks[0]
-        for m in masks[1:]:
-            mask = mask | m
-            
-        filtered_cls = cls_news[mask]
-        for _, row in filtered_cls.head(30).iterrows():
-            title = row["标题"]
-            content = row["内容"]
-            is_match, match_type, match_kw = match_company_keywords(title + content, company_meta)
-            if not is_match:
-                continue
-            base = {
-                "ts": f"{row['发布日期']} {row['发布时间']}",
-                "source": "财联社",
-                "title": title,
-                "content": content,
-                "url": "https://www.cls.cn/",
-                "raw_type": "定向电报",
-                "match_type": match_type,
-                "match_keyword": match_kw,
-            }
-            results.append(enrich_company_fields(base, company_meta))
-    except Exception:
-        pass
-    return results
-
-
-def fetch_specific_signals(subject, source="all"):
+def fetch_specific_signals(subject, source="em"):
     """
     按来源抓取特定主体新闻。
-    source: em | cls | all
+    目前仅保留东方财富个股新闻作为兜底。
     """
     if not subject:
         return []
 
     company_meta = resolve_company(subject)
     results = []
-    if source in ("em", "all"):
-        results.extend(fetch_em_news(company_meta))
-    if source in ("cls", "all"):
-        results.extend(fetch_cls_news(company_meta))
+    results.extend(fetch_em_news(company_meta))
     return results
 
 
@@ -268,9 +216,9 @@ def parse_args(argv):
     parser.add_argument("subject", help="Target subject/company, e.g. 00700")
     parser.add_argument(
         "--source",
-        choices=["em", "cls", "all"],
-        default="all",
-        help="News source to fetch: em (Eastmoney), cls (Cailianpress), or all",
+        choices=["em"],
+        default="em",
+        help="News source: em (Eastmoney)",
     )
     return parser.parse_args(argv)
 

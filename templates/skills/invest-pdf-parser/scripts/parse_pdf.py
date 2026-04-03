@@ -14,18 +14,32 @@ def main():
     parser.add_argument("--input", required=True, help="Path to PDF file")
     parser.add_argument("--output-dir", required=False, help="Directory to save the markdown")
     parser.add_argument("--hybrid", action="store_true", help="Use hybrid AI mode for complex tables/charts")
+    parser.add_argument("--force", action="store_true", help="Force re-parse even if .md already exists and is newer")
     args = parser.parse_args()
 
     input_path = os.path.abspath(args.input)
     if not os.path.exists(input_path):
          print(f"Error: File not found: {input_path}")
          sys.exit(1)
-         
+
     out_dir = args.output_dir
     if not out_dir:
         out_dir = os.path.dirname(input_path)
     out_dir = os.path.abspath(out_dir)
-    
+
+    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    md_path = os.path.join(out_dir, f"{base_name}.md")
+
+    # 幂等检查：如果 .md 已存在且比 PDF 更新，跳过解析
+    if not args.force and os.path.exists(md_path):
+        pdf_mtime = os.path.getmtime(input_path)
+        md_mtime = os.path.getmtime(md_path)
+        if md_mtime >= pdf_mtime:
+            print(f"Skipped (already parsed, .md is up-to-date): {md_path}")
+            print(f"Original PDF : {input_path}")
+            print(f"Markdown out : {md_path}")
+            sys.exit(0)
+
     # Process
     try:
         if args.hybrid:
@@ -43,14 +57,11 @@ def main():
                 output_dir=out_dir,
                 format="markdown"
             )
-        
-        base_name = os.path.splitext(os.path.basename(input_path))[0]
-        md_path = os.path.join(out_dir, f"{base_name}.md")
-        
+
         print("\nSuccess!")
         print(f"Original PDF : {input_path}")
         print(f"Markdown out : {md_path}")
-        
+
     except Exception as e:
         print(f"Error parsing PDF: {e}")
         sys.exit(1)

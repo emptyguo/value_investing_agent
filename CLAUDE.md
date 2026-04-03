@@ -14,12 +14,13 @@
 
 | Agent ID | 名称 | 用途 | Workspace |
 |---|---|---|---|
-| `assistant` | 龙虾小助手 | 通用助手，可调度子 agent | `/root/.openclaw/workspace` |
-| `fa-tuoshui` | FA脱水 | FA 情报处理 | `/root/.openclaw/workspace` |
+| `assistant` | 龙虾小助手 | 个人主体通用助手，可调度子 agent | `/root/.openclaw/workspace` |
+| `mifeng_corporate_hub` | 觅风中枢龙虾 | 公司主体中枢 Agent，飞书文档同步，未来调度 value_* | `.../agents/mifeng_corporate_hub` |
 | `value_guo` | 郭沛英的分身 | 价值投资分身 | `.../agents/value_guo` |
 | `value_tianxiong` | 天雄的分身 | 价值投资分身 | `.../agents/value_tianxiong` |
 | `value_qingfeng` | 清风的分身 | 价值投资分身 | `.../agents/value_qingfeng` |
 | `value_weichao` | 惟超的分身 | 价值投资分身 | `.../agents/value_weichao` |
+| `value_liaobin` | 廖斌的分身 | 价值投资分身 | `.../agents/value_liaobin` |
 
 ## 目录结构
 
@@ -32,12 +33,14 @@
 │   ├── TOOLS.md            # 工具规范
 │   ├── HEARTBEAT.md        # 心跳自检
 │   ├── domains/            # 行业模板
-│   └── views/              # 个股视图模板
-├── skills/                 # 标准化无状态 Skill
+│   ├── views/              # 个股视图模板
+│   └── skills/             # skills/ 的导出副本（rsync 同步，勿直接编辑）
+├── skills/                 # 标准化无状态 Skill（唯一编辑入口）
 │   ├── invest-news/        # 新闻采集（公共）
 │   ├── invest-ingest/      # 新闻分流到公司目录（公共）
 │   ├── invest-doc-router/  # 文档归档（公共）
 │   ├── invest-pdf-parser/  # PDF 高保真解析（公共）
+│   ├── invest-lark-cli/    # 飞书文档同步（公共，仅 mifeng_corporate_hub）
 │   ├── invest-digest/      # 每日新闻简报（个人）
 │   ├── invest-analysis/    # 深度定性定量分析（个人）
 │   └── invest-review/      # 原则复核（个人）
@@ -65,12 +68,17 @@
 技能按对话流需求注册，可重叠。数据隔离靠路径（公共 → `data/`，个人 → `agents/{id}/`），不靠技能注册：
 
 ```
-assistant:        invest-news, invest-ingest, invest-doc-router, invest-pdf-parser
-value_* agents:   invest-news, invest-ingest, invest-doc-router, invest-pdf-parser,
-                  invest-digest, invest-analysis, invest-review
+assistant:              invest-news, invest-ingest, invest-doc-router, invest-pdf-parser
+mifeng_corporate_hub:   invest-news, invest-ingest, invest-doc-router, invest-pdf-parser,
+                        invest-lark-cli, invest-digest, invest-analysis, invest-review
+value_* agents:         invest-news, invest-ingest, invest-doc-router, invest-pdf-parser,
+                        invest-digest, invest-analysis, invest-review
 ```
 
-注意：companies.json 只有 assistant 可直接编辑（防并发），value_* 发现新竞品时记录到 memory/ 并建议 assistant 更新。
+注意：
+
+- `companies.json` 只有 assistant 可直接编辑（防并发），value_* 发现新竞品时记录到 memory/ 并建议 assistant 更新。
+- `invest-lark-cli` 仅注册到 `mifeng_corporate_hub`（公司主体中枢），不注册到 assistant（个人主体）或 value_*。
 
 ## Skill 边界
 
@@ -80,6 +88,7 @@ value_* agents:   invest-news, invest-ingest, invest-doc-router, invest-pdf-pars
 | invest-ingest | 公共 | `data/news/raw/` | `data/companies/{co}/news/raw/`, `news/notes/` | `views/`, `SOUL.md` |
 | invest-doc-router | 公共 | 用户上传 | `data/companies/{co}/` | `news/raw/`, `views/` |
 | invest-pdf-parser | 公共 | PDF 文件 | 同目录生成 `.md` | 不做内容分析 |
+| invest-lark-cli | 公共 | `companies.json`, `doc_types.json`, 飞书 API | `{workspace}/lark_sync/`（staging/state/logs）, `data/companies/{co}/`（阶段 4 落盘）, `data/industry/unclassified/lark/` | `views/`, `SOUL.md`, 不自动扩容 `companies.json` |
 | invest-digest | 个人 | `data/news/raw/`, `data/companies/`, `SOUL.md`, `domains/` | `memory/` | `views/`, `SOUL.md`（不改） |
 | invest-analysis | 个人 | `data/companies/`, `views/`, `SOUL.md`, `domains/` | `views/` | `SOUL.md`, `news/raw/` |
 | invest-review | 个人 | `SOUL.md`, `views/`, `MEMORY.md` | 输出报告 | **不自动改 SOUL.md** |
@@ -130,6 +139,9 @@ value_* agents:   invest-news, invest-ingest, invest-doc-router, invest-pdf-pars
       │  invest-doc-router ──→ companies/{co}/{type}/  ✅ 已实现 │
       │       ↓ (PDF时自动触发)                                  │
       │  invest-pdf-parser ──→ 同目录 .md          ✅ 已实现·可用│
+      │                                                         │
+      │  invest-lark-cli ──→ 飞书文档 → 四阶段归档   ✅ 已实现  │
+      │  （仅 mifeng_corporate_hub，多文件约束 Pipeline）        │
       └─────────────────────────────────────────────────────────┘
 ```
 
@@ -140,10 +152,11 @@ value_* agents:   invest-news, invest-ingest, invest-doc-router, invest-pdf-pars
 | `invest-pdf-parser` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `parse_pdf.py` ✅ | — |
 | `invest-news` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `fetch_news.py` + `update_radar.py` ✅ | SKILL.md 待补双模式说明 |
 | `invest-ingest` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `ingest_news_to_companies.py` ✅ | SKILL.md 待补双模式说明 |
-| `invest-doc-router` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `route_company_doc.py` ✅ | SKILL.md 硬编码表待改为引用 doc_types.json |
+| `invest-doc-router` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `route_company_doc.py` ✅ | — |
+| `invest-lark-cli` | 数据采集 | ✅ 可部署 | 是（mifeng_corporate_hub） | `lark_inventory.py` + `lark_download.py` + `agent_stage3.py` + `agent_stage4.py` + `verify_stage.py` | 依赖 lark-cli |
 | `invest-digest` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
 | `invest-analysis` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
-| `invest-review` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | `shared/` 路径需修正 |
+| `invest-review` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
 
 ### 规划技能
 
@@ -201,3 +214,22 @@ data/books/
 - 主持人（assistant）选题确认 → 各 value_* 发言 → 各自用 challenger 自我攻击 → 会议纪要
 - 输出：`data/meetings/YYYY-MM-DD-{company}.md`
 - 记录：共识、分歧、待验证事项、人工纠偏结果
+
+### 部署
+
+飞书云文档定时任务
+
+```
+openclaw cron add \
+  --name "飞书文档同步" \
+  --cron "0 8-20/1 * * *" \
+  --tz "Asia/Shanghai" \
+  --session isolated \
+  --message "【流水线指令】
+    1. 请使用技能 invest-lark-cli，不要将其视为系统程序，务必遵循技能中的SKILL.md 的规则。
+    2. 按照技能中的流程进行分步骤执行，不要跳步，不要遗漏任何步骤。如果失败请及时发送消息通知" \
+  --agent mifeng_corporate_hub \
+  --announce \
+  --channel feishu \
+  --to "user:ou_cbcd3ee3f57877285dfa8e80f1ad066e"
+```

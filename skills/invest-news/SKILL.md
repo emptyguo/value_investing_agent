@@ -32,16 +32,20 @@ description: 采集市场新闻并存入公共原始数据区 ~/.openclaw/worksp
 
 读取 `companies.json`，获取目标公司的 brands、competitors、industry_keywords 等字段，用于构造搜索查询。
 
-### Step 2：联网搜索采集
+### Step 2：联网搜索采集（全球化策略）
 
-使用 Agent 自带的 web search 能力（无需额外 API 额度），按以下策略搜索：
+使用 Agent 自带的 web search 能力，根据 `companies.json` 中的 `market` 字段采用差异化搜索策略：
 
-- **按公司维度搜索**：公司名/别名 + "最新消息"
-- **按品牌维度搜索**：每个 brand + "新闻"
-- **按竞品维度搜索**：每个 competitor + 相关动态
-- 如有 `parent` 字段，同时关注母公司层面的重大动态
-- 聚焦最近 24 小时内的新闻
-- 优先中文财经信息源（财联社、东方财富、同花顺、雪球等）
+- **针对 CN / HK 市场**：优先中文财经信息源（财联社、东方财富、同花顺、雪球、36Kr、界面新闻等）。
+- **针对 US / Global 市场**：
+  - **核心信源**：必须检索全球顶级信源（Reuters, Bloomberg, CNBC, Seeking Alpha, Investing.com）。
+  - **检索语言**：必须使用**英文名称/别名**进行检索，确保抓取到第一手全球战略信息。
+  - **语言处理**：归档时 `title` 可保留原文，但 `content` 必须包含 Agent 翻译后的中文核心摘要。
+- **全维度搜索**：
+  - 公司维度：公司名/别名 + "最新消息" / "Latest News"
+  - 品牌维度：每个 brand + "新闻"
+  - 竞品维度：每个 competitor + 相关动态
+- 聚焦最近 24 小时内的新闻。
 
 ### Step 3：去重与落盘
 
