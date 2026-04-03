@@ -71,16 +71,6 @@ def _get_state_keys(state_path: str) -> set:
     return keys
 
 
-def is_already_ingested(state_path: str, entity: str, fp: str, action: str) -> bool:
-    keys = _get_state_keys(state_path)
-    return f"{entity}:{fp}:{action}" in keys
-
-
-def mark_as_ingested(state_path: str, entity: str, fp: str, action: str):
-    record = {"entity": entity, "fp": fp, "action": action}
-    atomic_append_jsonl(state_path, [record])
-
-
 def to_note(item):
     return {
         "date": item.get("ts", "")[:10],
@@ -178,58 +168,50 @@ def main():
     state_path = os.path.abspath(os.path.join(DATA_ROOT, "..", "state", "ingest_state.jsonl"))
     os.makedirs(os.path.dirname(state_path), exist_ok=True)
     
-    for company_id, rows in grouped_co.items():
-        target_dir = os.path.join(DATA_ROOT, "companies", company_id)
-        raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
-        notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
+    # Load state once to avoid O(N^2)
+    state_keys = _get_state_keys(state_path)
+    new_state_records = []
 
+    def process_group(entity_id, rows, root_subdir, action="news_route"):
+        nonlocal total_raw_saved
         new_raws = []
         new_notes = []
         
         for row in rows:
             fp = normalize_fingerprint(row.get("title", ""), row.get("url", ""))
-            if not is_already_ingested(state_path, company_id, fp, "news_route"):
+            state_key = f"{entity_id}:{fp}:{action}"
+            
+            if state_key not in state_keys:
                 new_raws.append(row)
                 new_notes.append(to_note(row))
-                mark_as_ingested(state_path, company_id, fp, "news_route")
+                # Add to local set and batch queue
+                state_keys.add(state_key)
+                new_state_records.append({"entity": entity_id, "fp": fp, "action": action})
 
         raw_saved = len(new_raws)
         notes_saved = len(new_notes)
 
         if raw_saved > 0:
+            target_dir = os.path.join(DATA_ROOT, root_subdir, entity_id)
+            raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
+            notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
+            
             atomic_append_jsonl(raw_target, new_raws)
             atomic_append_jsonl(notes_target, new_notes)
-            append_timeline("companies", company_id, args.date, raw_saved, notes_saved)
-            append_intake_log("companies", company_id, new_raws, args.date)
+            append_timeline(root_subdir, entity_id, args.date, raw_saved, notes_saved)
+            append_intake_log(root_subdir, entity_id, new_raws, args.date)
+            total_raw_saved += raw_saved
+            print(f"[{root_subdir.capitalize()}: {entity_id}] raw_saved={raw_saved}")
 
-        total_raw_saved += raw_saved
-        print(f"[Company: {company_id}] raw_saved={raw_saved}")
+    for company_id, rows in grouped_co.items():
+        process_group(company_id, rows, "companies")
 
     for industry_id, rows in grouped_ind.items():
-        target_dir = os.path.join(DATA_ROOT, "industry", industry_id)
-        raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
-        notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
+        process_group(industry_id, rows, "industry")
 
-        new_raws = []
-        new_notes = []
-        
-        for row in rows:
-            fp = normalize_fingerprint(row.get("title", ""), row.get("url", ""))
-            if not is_already_ingested(state_path, industry_id, fp, "news_route"):
-                new_raws.append(row)
-                new_notes.append(to_note(row))
-                mark_as_ingested(state_path, industry_id, fp, "news_route")
-
-        raw_saved = len(new_raws)
-        notes_saved = len(new_notes)
-
-        if raw_saved > 0:
-            atomic_append_jsonl(raw_target, new_raws)
-            atomic_append_jsonl(notes_target, new_notes)
-            append_timeline("industry", industry_id, args.date, raw_saved, notes_saved)
-            append_intake_log("industry", industry_id, new_raws, args.date)
-            
-        print(f"[Industry: {industry_id}] raw_saved={raw_saved}")
+    # Batch save new state records
+    if new_state_records:
+        atomic_append_jsonl(state_path, new_state_records)
 
     print(f"Ingest completed for {args.date}: total_raw_saved={total_raw_saved}")
     return 0
