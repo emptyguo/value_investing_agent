@@ -3,10 +3,15 @@ import hashlib
 import json
 import fcntl
 import os
-import tempfile
-import shutil
+from typing import List, Dict, Any
 
 def normalize_fingerprint(title: str, url: str) -> str:
+    """
+    Generate a SHA-256 fingerprint from a normalized title and URL.
+    
+    URL normalization: strips protocol, www., query parameters, fragments, trailing slashes, and converts to lowercase.
+    Title normalization: strips all non-alphanumeric characters, whitespace, and converts to lowercase.
+    """
     # Normalize URL
     u = re.sub(r'^https?://', '', url)
     u = re.sub(r'^www\.', '', u)
@@ -21,7 +26,7 @@ def normalize_fingerprint(title: str, url: str) -> str:
     raw = f"{t}{u}".encode('utf-8')
     return hashlib.sha256(raw).hexdigest()
 
-def atomic_append_jsonl(filepath: str, rows: list):
+def atomic_append_jsonl(filepath: str, rows: List[Dict[str, Any]]) -> None:
     """Safely append rows to a JSONL file using fcntl locking."""
     if not rows:
         return
