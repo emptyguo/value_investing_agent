@@ -29,7 +29,7 @@ def resolve_default_data_root():
         return runtime_shared_candidate
 
     # Fallback 2: Local Repo workspace_data (development)
-    local_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../../workspace_data/news"))
+    local_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../workspace_data/news"))
     if os.path.isdir(os.path.dirname(local_shared_candidate)):
         return local_shared_candidate
 
@@ -46,7 +46,7 @@ def resolve_company_dict_path():
     if os.path.exists(runtime):
         return runtime
     # Local dev: <repo>/workspace_data/references/companies.json
-    local = os.path.abspath(os.path.join(script_dir, "../../../../workspace_data/references/companies.json"))
+    local = os.path.abspath(os.path.join(script_dir, "../../../workspace_data/references/companies.json"))
     if os.path.exists(local):
         return local
     return runtime
@@ -212,15 +212,9 @@ def parse_args(argv):
 
 def log_run_metadata(data_root, run_id, date_str, scope, mode, success_count):
     ts = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d_%H%M%S")
-    # If data_root already ends in 'news', we just append 'raw' and 'metadata'.
-    # For safety, let's just make it work whether data_root has 'news' or not.
-    # By specification from instructions:
-    # meta_path = os.path.join(data_root, "news", "raw", "metadata", f"run_{ts}_{run_id}.json")
-    # But since DATA_ROOT might already be .../news, we'll strip trailing 'news' if needed.
-    if data_root.endswith("news"):
-        data_root = os.path.dirname(data_root)
     
-    meta_path = os.path.join(data_root, "news", "raw", "metadata", f"run_{ts}_{run_id}.json")
+    # data_root resolves to .../news directory
+    meta_path = os.path.join(data_root, "raw", "metadata", f"run_{ts}_{run_id}.json")
     os.makedirs(os.path.dirname(meta_path), exist_ok=True)
     
     payload = {
