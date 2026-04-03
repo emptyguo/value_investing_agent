@@ -1,7 +1,13 @@
 import argparse
+import fcntl
 import json
 import os
+import sys
 from datetime import datetime
+
+# Inject utils path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+from skills.common.scripts.utils import atomic_append_jsonl, normalize_fingerprint
 
 
 def resolve_data_root():
@@ -46,27 +52,33 @@ def read_jsonl(path):
     return rows
 
 
-def append_jsonl_dedup(path, rows, fingerprint_keys):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    seen = set()
-    if os.path.exists(path):
-        for item in read_jsonl(path):
-            seen.add(make_fingerprint(item, fingerprint_keys))
+def _get_state_keys(state_path: str) -> set:
+    keys = set()
+    if not os.path.exists(state_path):
+        return keys
+    with open(state_path, 'r', encoding='utf-8') as f:
+        fcntl.flock(f, fcntl.LOCK_SH)
+        try:
+            for line in f:
+                if line.strip():
+                    try:
+                        data = json.loads(line)
+                        keys.add(f"{data.get('entity')}:{data.get('fp')}:{data.get('action')}")
+                    except json.JSONDecodeError:
+                        pass
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+    return keys
 
-    saved = 0
-    with open(path, "a", encoding="utf-8") as f:
-        for row in rows:
-            fp = make_fingerprint(row, fingerprint_keys)
-            if fp in seen:
-                continue
-            seen.add(fp)
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-            saved += 1
-    return saved
+
+def is_already_ingested(state_path: str, entity: str, fp: str, action: str) -> bool:
+    keys = _get_state_keys(state_path)
+    return f"{entity}:{fp}:{action}" in keys
 
 
-def make_fingerprint(item, keys):
-    return "||".join(str(item.get(k, "")).strip() for k in keys)
+def mark_as_ingested(state_path: str, entity: str, fp: str, action: str):
+    record = {"entity": entity, "fp": fp, "action": action}
+    atomic_append_jsonl(state_path, [record])
 
 
 def to_note(item):
@@ -88,38 +100,45 @@ def to_note(item):
 
 def append_timeline(root_subdir, entity_id, ingest_date, raw_saved, notes_saved):
     """root_subdir: 'companies' or 'industry'"""
+    if raw_saved == 0 and notes_saved == 0:
+        return
+        
     timeline_path = os.path.join(DATA_ROOT, root_subdir, entity_id, "timeline.md")
     os.makedirs(os.path.dirname(timeline_path), exist_ok=True)
-    if not os.path.exists(timeline_path):
-        with open(timeline_path, "w", encoding="utf-8") as f:
-            f.write(f"# {entity_id.capitalize()} Timeline\n\n")
-
+    
     entry = (
         f"- [{ingest_date}] news-ingest\n"
         f"  - raw +{raw_saved}, notes +{notes_saved}\n"
     )
+    
     with open(timeline_path, "a", encoding="utf-8") as f:
-        f.write(entry)
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            if os.path.getsize(timeline_path) == 0:
+                f.write(f"# {entity_id.capitalize()} Timeline\n\n")
+            f.write(entry)
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def append_intake_log(root_subdir, entity_id, rows, ingest_date):
     log_path = os.path.join(DATA_ROOT, root_subdir, entity_id, "intake_log.jsonl")
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as f:
-        for row in rows:
-            log_entry = {
-                "item_id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{entity_id}-news",
-                "ts": datetime.now().isoformat(),
-                "entity": entity_id,
-                "input_type": "news_stream",
-                "title": row.get("title"),
-                "url": row.get("url"),
-                "source": row.get("source"),
-                "doc_type": "news",
-                "credibility": "L6",
-                "ingest_date": ingest_date
-            }
-            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    records = []
+    for row in rows:
+        log_entry = {
+            "item_id": f"{datetime.now().strftime('%Y%m%d%H%M%S')}-{entity_id}-news",
+            "ts": datetime.now().isoformat(),
+            "entity": entity_id,
+            "input_type": "news_stream",
+            "title": row.get("title"),
+            "url": row.get("url"),
+            "source": row.get("source"),
+            "doc_type": "news",
+            "credibility": "L6",
+            "ingest_date": ingest_date
+        }
+        records.append(log_entry)
+    atomic_append_jsonl(log_path, records)
 
 
 def load_company_industry_map():
@@ -139,9 +158,7 @@ def main():
         print(f"No source rows found: {news_raw_path}")
         return 0
 
-    # Load mapping
     co_to_ind = load_company_industry_map()
-
     grouped_co = {}
     grouped_ind = {}
     
@@ -150,53 +167,72 @@ def main():
         if not company_id:
             continue
         
-        # Route to company
         grouped_co.setdefault(company_id, []).append(item)
         
-        # Route to industry if applicable
         if item.get("match_type") == "industry":
             industry_id = co_to_ind.get(company_id)
             if industry_id:
                 grouped_ind.setdefault(industry_id, []).append(item)
 
     total_raw_saved = 0
+    state_path = os.path.abspath(os.path.join(DATA_ROOT, "..", "state", "ingest_state.jsonl"))
+    os.makedirs(os.path.dirname(state_path), exist_ok=True)
     
-    # Process Companies
     for company_id, rows in grouped_co.items():
         target_dir = os.path.join(DATA_ROOT, "companies", company_id)
         raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
         notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
 
-        fp_keys = ["ts", "source", "title", "url", "company"]
-        raw_saved = append_jsonl_dedup(raw_target, rows, fingerprint_keys=fp_keys)
-        notes_saved = append_jsonl_dedup(
-            notes_target, [to_note(x) for x in rows], fingerprint_keys=fp_keys
-        )
-        append_timeline("companies", company_id, args.date, raw_saved, notes_saved)
+        new_raws = []
+        new_notes = []
+        
+        for row in rows:
+            fp = normalize_fingerprint(row.get("title", ""), row.get("url", ""))
+            if not is_already_ingested(state_path, company_id, fp, "news_route"):
+                new_raws.append(row)
+                new_notes.append(to_note(row))
+                mark_as_ingested(state_path, company_id, fp, "news_route")
+
+        raw_saved = len(new_raws)
+        notes_saved = len(new_notes)
+
         if raw_saved > 0:
-            append_intake_log("companies", company_id, rows, args.date)
+            atomic_append_jsonl(raw_target, new_raws)
+            atomic_append_jsonl(notes_target, new_notes)
+            append_timeline("companies", company_id, args.date, raw_saved, notes_saved)
+            append_intake_log("companies", company_id, new_raws, args.date)
+
         total_raw_saved += raw_saved
         print(f"[Company: {company_id}] raw_saved={raw_saved}")
 
-    # Process Industries
     for industry_id, rows in grouped_ind.items():
         target_dir = os.path.join(DATA_ROOT, "industry", industry_id)
         raw_target = os.path.join(target_dir, "news", "raw", f"{args.date}.jsonl")
         notes_target = os.path.join(target_dir, "news", "notes", f"{args.date}.jsonl")
 
-        fp_keys = ["ts", "source", "title", "url"] # Less strict for industry dedup
-        raw_saved = append_jsonl_dedup(raw_target, rows, fingerprint_keys=fp_keys)
-        notes_saved = append_jsonl_dedup(
-            notes_target, [to_note(x) for x in rows], fingerprint_keys=fp_keys
-        )
-        append_timeline("industry", industry_id, args.date, raw_saved, notes_saved)
+        new_raws = []
+        new_notes = []
+        
+        for row in rows:
+            fp = normalize_fingerprint(row.get("title", ""), row.get("url", ""))
+            if not is_already_ingested(state_path, industry_id, fp, "news_route"):
+                new_raws.append(row)
+                new_notes.append(to_note(row))
+                mark_as_ingested(state_path, industry_id, fp, "news_route")
+
+        raw_saved = len(new_raws)
+        notes_saved = len(new_notes)
+
         if raw_saved > 0:
-            append_intake_log("industry", industry_id, rows, args.date)
+            atomic_append_jsonl(raw_target, new_raws)
+            atomic_append_jsonl(notes_target, new_notes)
+            append_timeline("industry", industry_id, args.date, raw_saved, notes_saved)
+            append_intake_log("industry", industry_id, new_raws, args.date)
+            
         print(f"[Industry: {industry_id}] raw_saved={raw_saved}")
 
     print(f"Ingest completed for {args.date}: total_raw_saved={total_raw_saved}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
