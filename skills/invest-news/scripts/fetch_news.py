@@ -3,8 +3,17 @@ import argparse
 import sys
 import json
 import os
+import uuid
 from datetime import datetime
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+# Add repo root to path to allow importing from skills
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+from skills.common.scripts.utils import normalize_fingerprint, atomic_append_jsonl
 
 def resolve_default_data_root():
     """
@@ -20,7 +29,7 @@ def resolve_default_data_root():
         return runtime_shared_candidate
 
     # Fallback 2: Local Repo workspace_data (development)
-    local_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../workspace_data/news"))
+    local_shared_candidate = os.path.abspath(os.path.join(script_dir, "../../../../workspace_data/news"))
     if os.path.isdir(os.path.dirname(local_shared_candidate)):
         return local_shared_candidate
 
@@ -37,26 +46,12 @@ def resolve_company_dict_path():
     if os.path.exists(runtime):
         return runtime
     # Local dev: <repo>/workspace_data/references/companies.json
-    local = os.path.abspath(os.path.join(script_dir, "../../../workspace_data/references/companies.json"))
+    local = os.path.abspath(os.path.join(script_dir, "../../../../workspace_data/references/companies.json"))
     if os.path.exists(local):
         return local
     return runtime
 
 COMPANY_DICT_PATH = os.environ.get("OPENCLAW_COMPANY_DICT", resolve_company_dict_path())
-
-
-def build_fingerprint(item):
-    """
-    简单去重键：来源 + 标题 + 链接 + 公司。
-    """
-    return "||".join(
-        [
-            str(item.get("source", "")).strip(),
-            str(item.get("title", "")).strip(),
-            str(item.get("url", "")).strip(),
-            str(item.get("company", "")).strip(),
-        ]
-    )
 
 
 def load_existing_fingerprints(raw_path):
@@ -74,7 +69,8 @@ def load_existing_fingerprints(raw_path):
                 continue
             try:
                 item = json.loads(line)
-                fingerprints.add(build_fingerprint(item))
+                fp = normalize_fingerprint(item.get("title", ""), item.get("url", ""))
+                fingerprints.add(fp)
             except json.JSONDecodeError:
                 # 跳过损坏行，不中断主流程
                 continue
@@ -91,7 +87,8 @@ def deduplicate_news(news_list, existing_fingerprints):
     unique_items = []
     seen = set(existing_fingerprints)
     for item in news_list:
-        fp = build_fingerprint(item)
+        fp = normalize_fingerprint(item.get("title", ""), item.get("url", ""))
+        item["fingerprint"] = fp
         if fp in seen:
             continue
         seen.add(fp)
@@ -197,39 +194,51 @@ def fetch_em_news(company_meta):
     return results
 
 
-def fetch_specific_signals(subject, source="em"):
-    """
-    按来源抓取特定主体新闻。
-    目前仅保留东方财富个股新闻作为兜底。
-    """
-    if not subject:
-        return []
-
-    company_meta = resolve_company(subject)
-    results = []
-    results.extend(fetch_em_news(company_meta))
-    return results
-
-
 def parse_args(argv):
-    parser = argparse.ArgumentParser(description="Fetch raw news and append deduplicated JSONL records.")
-    parser.add_argument("subject", help="Target subject/company, e.g. 00700")
-    parser.add_argument(
-        "--source",
-        choices=["em"],
-        default="em",
-        help="News source: em (Eastmoney)",
-    )
+    parser = argparse.ArgumentParser(description="Fetch raw news based on v3 contract.")
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all", action="store_true", help="Scan all companies")
+    group.add_argument("--subject", help="Scan specific company ID")
+    
+    parser.add_argument("--mode", choices=["native", "akshare", "all"], default="all")
+    
+    # Default to Asia/Shanghai current date
+    tz_sh = ZoneInfo("Asia/Shanghai")
+    default_date = datetime.now(tz_sh).strftime("%Y-%m-%d")
+    parser.add_argument("--date", default=default_date, help="Format YYYY-MM-DD")
+    
     return parser.parse_args(argv)
 
+def log_run_metadata(data_root, run_id, date_str, scope, mode, success_count):
+    ts = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d_%H%M%S")
+    # If data_root already ends in 'news', we just append 'raw' and 'metadata'.
+    # For safety, let's just make it work whether data_root has 'news' or not.
+    # By specification from instructions:
+    # meta_path = os.path.join(data_root, "news", "raw", "metadata", f"run_{ts}_{run_id}.json")
+    # But since DATA_ROOT might already be .../news, we'll strip trailing 'news' if needed.
+    if data_root.endswith("news"):
+        data_root = os.path.dirname(data_root)
+    
+    meta_path = os.path.join(data_root, "news", "raw", "metadata", f"run_{ts}_{run_id}.json")
+    os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+    
+    payload = {
+        "run_id": run_id,
+        "timestamp": ts,
+        "target_date": date_str,
+        "scope": scope,
+        "mode": mode,
+        "success_count": success_count
+    }
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
-def save_to_raw(news_list):
-    today = datetime.now().strftime("%Y-%m-%d")
-    raw_path = os.path.join(DATA_ROOT, f"raw/{today}.jsonl")
+
+def save_to_raw(news_list, date_str):
+    raw_path = os.path.join(DATA_ROOT, f"raw/{date_str}.jsonl")
     if not news_list:
         return raw_path, 0
-
-    os.makedirs(os.path.dirname(raw_path), exist_ok=True)
 
     existing_fingerprints = load_existing_fingerprints(raw_path)
     unique_news = deduplicate_news(news_list, existing_fingerprints)
@@ -237,23 +246,35 @@ def save_to_raw(news_list):
     if not unique_news:
         return raw_path, 0
 
-    with open(raw_path, "a", encoding="utf-8") as f:
-        for item in unique_news:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    atomic_append_jsonl(raw_path, unique_news)
     return raw_path, len(unique_news)
 
 
 if __name__ == "__main__":
     try:
         args = parse_args(sys.argv[1:])
-        company = resolve_company(args.subject)
-        signals = fetch_specific_signals(args.subject, args.source)
-        raw_path, saved_count = save_to_raw(signals)
+        run_id = str(uuid.uuid4())
+        
+        signals = []
+        if args.all:
+            companies = load_company_dict(COMPANY_DICT_PATH)
+            for company in companies:
+                if args.mode in ["all", "akshare"]:
+                    signals.extend(fetch_em_news(company))
+            scope = "all"
+        else:
+            company = resolve_company(args.subject)
+            if args.mode in ["all", "akshare"]:
+                signals.extend(fetch_em_news(company))
+            scope = args.subject
+            
+        raw_path, saved_count = save_to_raw(signals, args.date)
+        
+        log_run_metadata(DATA_ROOT, run_id, args.date, scope, args.mode, saved_count)
+        
         print(f"Saved raw news to: {raw_path}")
-        print(f"Source mode: {args.source}")
-        print(f"Company: {company['id']} ({company['symbol']})")
+        print(f"Run ID: {run_id}")
         print(f"Fetched: {len(signals)}, Saved(after dedup): {saved_count}")
-        print(json.dumps(signals, ensure_ascii=False))
     except Exception as exc:
         print(f"Error: {exc}")
         sys.exit(1)
