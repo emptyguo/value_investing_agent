@@ -43,7 +43,8 @@
 │   ├── invest-lark-cli/    # 飞书文档同步（公共，仅 mifeng_corporate_hub）
 │   ├── invest-digest/      # 每日新闻简报（个人）
 │   ├── invest-analysis/    # 深度定性定量分析（个人）
-│   └── invest-review/      # 原则复核（个人）
+│   ├── invest-review/      # 原则复核（个人）
+│   └── invest-focus/       # 公司主题切换（个人）
 ├── workspace_data/         # 本地参考数据（部署时同步到服务器）
 │   └── references/         # companies.json, doc_types.json
 ├── docs/                   # 文档
@@ -58,6 +59,7 @@
 2. **幂等部署**：部署步骤可安全重复执行（见 `docs/deploy.md`）
 3. **个人数据不覆盖**：SOUL.md、views/、memory/ 仅首次写入
 4. **共享 vs 个人**：公共数据存 `~/.openclaw/workspace/data/`，个人判断存各 agent workspace
+5. **SKILL.md 精简原则**：SKILL.md 只保留执行步骤和硬约束（≤80行），参考数据（目录树、检查清单、输出模板、JSON schema）移到 `references/` 子目录，Agent 在执行步骤中按需读取
 
 ## 部署
 
@@ -68,17 +70,19 @@
 技能按对话流需求注册，可重叠。数据隔离靠路径（公共 → `data/`，个人 → `agents/{id}/`），不靠技能注册：
 
 ```
-assistant:              invest-news, invest-ingest, invest-doc-router, invest-pdf-parser
+assistant:              invest-news, invest-ingest, invest-doc-router, invest-pdf-parser, invest-lark-cli
 mifeng_corporate_hub:   invest-news, invest-ingest, invest-doc-router, invest-pdf-parser,
                         invest-lark-cli, invest-digest, invest-analysis, invest-review
 value_* agents:         invest-news, invest-ingest, invest-doc-router, invest-pdf-parser,
-                        invest-digest, invest-analysis, invest-review
+                        invest-lark-cli, invest-digest, invest-analysis, invest-review
 ```
 
 注意：
 
 - `companies.json` 只有 assistant 可直接编辑（防并发），value_* 发现新竞品时记录到 memory/ 并建议 assistant 更新。
-- `invest-lark-cli` 仅注册到 `mifeng_corporate_hub`（公司主体中枢），不注册到 assistant（个人主体）或 value_*。
+- `invest-lark-cli` 已注册到所有 agent（assistant / mifeng_corporate_hub / value_*），用于飞书云文档同步与单文件上传。下载流水线（stages/01-04）仍以 `mifeng_corporate_hub` 为常规执行方；其他 agent 主要使用 `lark_upload.py` 上传产物。
+- `invest-focus` 注册到 `mifeng_corporate_hub` 和所有 `value_*`，不注册到 `assistant`。
+- **路由约束**：任何 agent 需要"上传文件到飞书"时，必须使用 `invest-lark-cli` 的 `lark_upload.py`，禁止调用 `feishu_upload_*` / `feishu_drive_*` 等 OpenClaw 原生工具。
 
 ## Skill 边界
 
@@ -92,6 +96,7 @@ value_* agents:         invest-news, invest-ingest, invest-doc-router, invest-pd
 | invest-digest | 个人 | `data/news/raw/`, `data/companies/`, `SOUL.md`, `domains/` | `memory/` | `views/`, `SOUL.md`（不改） |
 | invest-analysis | 个人 | `data/companies/`, `views/`, `SOUL.md`, `domains/` | `views/` | `SOUL.md`, `news/raw/` |
 | invest-review | 个人 | `SOUL.md`, `views/`, `MEMORY.md` | 输出报告 | **不自动改 SOUL.md** |
+| invest-focus | 个人 | `views/`, `domains/` | `views/`, `memory/` | `SOUL.md`, `data/` |
 
 ## 技能全景图 (Skill Panorama)
 
@@ -147,16 +152,17 @@ value_* agents:         invest-news, invest-ingest, invest-doc-router, invest-pd
 
 ### 现有技能状态
 
-| Skill | 层级 | 状态 | 注册到 openclaw.json | 脚本 | 已知改进项 |
+| Skill | 层级 | 状态 | 注册到 openclaw.json | 脚本 | references/ |
 | --- | --- | --- | --- | --- | --- |
 | `invest-pdf-parser` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `parse_pdf.py` ✅ | — |
-| `invest-news` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `fetch_news.py` + `update_radar.py` ✅ | SKILL.md 待补双模式说明 |
-| `invest-ingest` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `ingest_news_to_companies.py` ✅ | SKILL.md 待补双模式说明 |
-| `invest-doc-router` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `route_company_doc.py` ✅ | — |
-| `invest-lark-cli` | 数据采集 | ✅ 可部署 | 是（mifeng_corporate_hub） | `lark_inventory.py` + `lark_download.py` + `agent_stage3.py` + `agent_stage4.py` + `verify_stage.py` | 依赖 lark-cli |
-| `invest-digest` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
-| `invest-analysis` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
-| `invest-review` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | — |
+| `invest-news` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `fetch_news.py` + `update_radar.py` ✅ | `news-schema.md` |
+| `invest-ingest` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `ingest_news_to_companies.py` ✅ | — |
+| `invest-doc-router` | 数据采集 | ✅ 可部署 | 是（assistant + value_*） | `route_company_doc.py` ✅ | `archive-structure.md` |
+| `invest-lark-cli` | 数据采集 | ✅ 可部署 | 是（mifeng_corporate_hub） | `lark_inventory.py` + `lark_download.py` + `agent_stage3.py` + `agent_stage4.py` + `verify_stage.py` | `lark-states.md` |
+| `invest-digest` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | `digest-template.md` |
+| `invest-analysis` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | `analysis-dimensions.md`, `analysis-template.md` |
+| `invest-review` | 个人分析 | ✅ 可部署 | 是（value_*） | 纯 Prompt | `review-checklist.md` |
+| `invest-focus` | 个人分析 | ✅ 可部署 | 是（mifeng + value_*） | 纯 Prompt | — |
 
 ### 规划技能
 
@@ -232,4 +238,12 @@ openclaw cron add \
   --announce \
   --channel feishu \
   --to "user:ou_cbcd3ee3f57877285dfa8e80f1ad066e"
+```
+
+```
+openclaw cron add   --name "新闻抓取"   --cron "0 8-20/5 * * *"   --tz "Asia/Shanghai"   --session isolated   --message "【流水线指令】1. 请使用技能 invest-news，不要将其视为系统程序，务必遵循技能中的SKILL.md 的规则。 2. 按照技能中的流程进行分步骤执行，不要跳步，不要遗漏任何步骤。如果失败请及时发送消息通知"   --agent mifeng_corporate_hub   --announce   --channel feishu   --to "user:ou_cbcd3ee3f57877285dfa8e80f1ad066e"
+```
+
+```
+openclaw cron add   --name "新闻归档"   --cron "20 8-20/5 * * *"   --tz "Asia/Shanghai"   --session isolated   --message "【流水线指令】1. 请使用技能 invest-ingest，不要将其视为系统程序，务必遵循技能中的SKILL.md 的规则。 2. 按照技能中的流程进行分步骤执行，不要跳步，不要遗漏任何步骤。如果失败请及时发送消息通知"   --agent mifeng_corporate_hub   --announce   --channel feishu   --to "user:ou_cbcd3ee3f57877285dfa8e80f1ad066e"
 ```
