@@ -7,8 +7,8 @@
 ## 输入
 
 1. `{batch_id}_manifest.jsonl`
-2. `~/.openclaw/workspace/data/references/companies.json`
-3. `~/.openclaw/workspace/data/references/doc_types.json`
+2. `{OPENCLAW_DATA_DIR}/references/companies.json`
+3. `{OPENCLAW_DATA_DIR}/references/doc_types.json`
 4. `{workspace}/lark_sync/staging/downloads/{batch_id}/`
 5. `{workspace}/lark_sync/staging/parsed/{batch_id}/`
 
@@ -105,6 +105,7 @@ data/companies/tme/sellside/briefings/tme_4q25.md
    - `target_parsed_path`（降级归档时留空）
    - `abs_target_source_path`
    - `abs_target_parsed_path`（降级归档时留空）
+   - `feishu_url`（由 `doc_token` + `source_type` + `file_type` 构造的飞书原始链接）
    - `stage=classified`
 4. 落盘完成后写：
    - `stage=archived`
@@ -112,8 +113,8 @@ data/companies/tme/sellside/briefings/tme_4q25.md
 5. `company=unknown` 落到 `data/industry/unclassified/lark/`。
 6. 更新：
    - `state/doc_states.jsonl`
-   - 公司 `timeline.md`
-   - 公司 `intake_log.jsonl`
+   - 公司 `timeline.md`（含飞书源链接，便于溯源）
+   - 公司 `intake_log.jsonl`（含 `feishu_url` 字段）
 
 ## Gate
 

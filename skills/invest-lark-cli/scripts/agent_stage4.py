@@ -5,6 +5,9 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
+from skills.common.scripts.utils import build_feishu_url
+
 def get_level(cred: str) -> int:
     if cred.startswith("L") and cred[1:].isdigit():
         return int(cred[1:])
@@ -195,7 +198,15 @@ def main():
             row["stage"] = "archived"
             row["archived_at"] = now
             
-            # 7. Update intake_log.jsonl
+            # 7. Build feishu source URL for traceability
+            feishu_url = build_feishu_url(
+                row.get("doc_token", ""),
+                row.get("source_type", "drive"),
+                row.get("file_type", ""),
+            )
+            row["feishu_url"] = feishu_url
+
+            # 8. Update intake_log.jsonl
             if cid != "unknown":
                 log_path = data_root / "companies" / cid / "intake_log.jsonl"
                 log_entry = {
@@ -205,23 +216,26 @@ def main():
                     "title": row.get("original_name"),
                     "doc_type": dt["id"],
                     "credibility": credibility,
-                    "stored_rel_path": row["target_source_path"]
+                    "stored_rel_path": row["target_source_path"],
+                    "feishu_url": feishu_url
                 }
                 with log_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-            
-            # 8. Update timeline.md (STRICT COMPLIANCE)
+
+            # 9. Update timeline.md (STRICT COMPLIANCE)
             if cid != "unknown":
                 timeline_path = data_root / "companies" / cid / "timeline.md"
                 if not timeline_path.exists():
                     timeline_path.write_text(f"# {cid.upper()} Business Timeline\n\n", encoding="utf-8")
-                
+
+                feishu_ref = f"  - feishu: {feishu_url}\n" if feishu_url else ""
                 with timeline_path.open("a", encoding="utf-8") as f:
                     line = (
                         f"- [{datetime.now().strftime('%Y-%m-%d')}] doc-routed\n"
                         f"  - type: {dt['id']} ({credibility})\n"
                         f"  - title: {row.get('original_name')}\n"
                         f"  - path: {row['target_source_path']}\n"
+                        f"{feishu_ref}"
                     )
                     f.write(line)
             

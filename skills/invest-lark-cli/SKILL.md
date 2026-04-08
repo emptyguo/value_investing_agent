@@ -79,6 +79,27 @@ python3 skills/invest-lark-cli/scripts/verify_stage.py \
 
 **Gate 3**（全流程后）：`skills/invest-lark-cli/scripts/batch_summary.py --silent-if-empty`，最终闭环汇报。
 
+## 飞书源链接溯源（feishu_url）
+
+Stage 4 在归档每条记录时会写入 `feishu_url` 字段，路由规则集中在 `skills/common/scripts/utils.py:build_feishu_url`：
+
+- `source_type=wiki` → `https://feishu.cn/wiki/{token}`
+- `file_type=doc/docx` → `https://feishu.cn/docx/{token}`
+- `file_type=sheet` → `https://feishu.cn/sheets/{token}`
+- `file_type=bitable` → `https://feishu.cn/base/{token}`
+- 其他 → `https://feishu.cn/file/{token}`
+
+写入位置：manifest 行、`{co}/intake_log.jsonl`、`{co}/timeline.md`。
+
+历史归档记录（无 `feishu_url` 字段）使用一次性脚本回填：
+
+```bash
+python3 skills/invest-lark-cli/scripts/backfill_feishu_urls.py \
+  --workspace {workspace} [--dry-run]
+```
+
+幂等：按 `stored_rel_path` 去重，已有 `feishu_url` 的记录不重复写入。仅在历史数据迁移时使用，不进入常规流水线。
+
 ## 上传单个文件到飞书云盘
 
 当用户需要"把某个本地文件传到飞书"时，**必须**使用本技能的 `lark_upload.py`，不允许使用 OpenClaw 底层的 `feishu_*` 原生工具。

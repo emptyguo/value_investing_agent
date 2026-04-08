@@ -21,7 +21,7 @@
 ## 路径安全规则
 
 1. staging 文件必须位于 `{workspace}/lark_sync/staging/` 子树。
-2. 最终归档必须位于 `~/.openclaw/workspace/data/` 子树。
+2. 最终归档必须位于 `{OPENCLAW_DATA_DIR}/` 子树。
 3. 任一路径越界立即失败并停止。
 
 ## 断点续传

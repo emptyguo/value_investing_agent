@@ -26,6 +26,30 @@ def normalize_fingerprint(title: str, url: str) -> str:
     raw = f"{t}{u}".encode('utf-8')
     return hashlib.sha256(raw).hexdigest()
 
+def build_feishu_url(doc_token: str, source_type: str, file_type: str) -> str:
+    """
+    Construct a feishu source URL for traceability from a doc token.
+
+    Returns "" if doc_token is empty. Routing rules:
+      - source_type == "wiki"        -> /wiki/{token}
+      - file_type in (doc, docx)     -> /docx/{token}
+      - file_type == "sheet"         -> /sheets/{token}
+      - file_type == "bitable"       -> /base/{token}
+      - otherwise                    -> /file/{token}
+    """
+    if not doc_token:
+        return ""
+    if source_type == "wiki":
+        return f"https://feishu.cn/wiki/{doc_token}"
+    if file_type in ("doc", "docx"):
+        return f"https://feishu.cn/docx/{doc_token}"
+    if file_type == "sheet":
+        return f"https://feishu.cn/sheets/{doc_token}"
+    if file_type == "bitable":
+        return f"https://feishu.cn/base/{doc_token}"
+    return f"https://feishu.cn/file/{doc_token}"
+
+
 def atomic_append_jsonl(filepath: str, rows: List[Dict[str, Any]]) -> None:
     """Safely append rows to a JSONL file using fcntl locking."""
     if not rows:
