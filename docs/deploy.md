@@ -8,7 +8,7 @@
 
 ## 1. 部署 Skills
 
-当前仓库中需要同步的 `invest-*` skills 共 8 个：
+当前仓库中需要同步的 `invest-*` skills 共 9 个：
 
 - `invest-news`
 - `invest-ingest`
@@ -18,6 +18,7 @@
 - `invest-digest`
 - `invest-analysis`
 - `invest-review`
+- `invest-focus`
 
 同步命令：
 
@@ -51,6 +52,7 @@ ls ~/.openclaw/workspace/skills/invest-*
 # invest-news
 # invest-pdf-parser
 # invest-review
+# invest-focus
 ```
 
 ## 2. 创建共享数据目录并同步参考数据
@@ -140,12 +142,12 @@ done
 当前线上实际注册的 skills 以 `openclaw.json` 为准：
 
 - `assistant`: `ontology`, `self-improving-agent`, `gateway`, `feishu_doc`, `feishu_chat`, `feishu_calendar`, `invest-pdf-parser`, `invest-news`, `invest-ingest`, `invest-doc-router`
-- `mifeng_corporate_hub`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-lark-cli`, `invest-digest`, `invest-analysis`, `invest-review`
-- `value_*`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-digest`, `invest-analysis`, `invest-review`
+- `mifeng_corporate_hub`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-lark-cli`, `invest-digest`, `invest-analysis`, `invest-review`, `invest-focus`
+- `value_*`: `ontology`, `self-improving-agent`, `feishu_doc`, `invest-pdf-parser`, `invest-doc-router`, `invest-news`, `invest-ingest`, `invest-digest`, `invest-analysis`, `invest-review`, `invest-focus`
 
 说明：
 
-- 当前仓库中的 8 个 `invest-*` skills 已全部部署到 `~/.openclaw/workspace/skills/`。
+- 当前仓库中的 9 个 `invest-*` skills 已全部部署到 `~/.openclaw/workspace/skills/`。
 - 当前线上真正注册到 agent 的技能集合以 `openclaw.json` 为准；新增或移除技能时，需同步更新该文件后再发布配置。
 
 ## 5. 校验 bindings 与 Feishu accounts

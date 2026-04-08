@@ -1,135 +1,78 @@
 ---
 name: invest-news
-description: 采集市场新闻并存入公共原始数据区 ~/.openclaw/workspace/data/news/raw/
+description: 采集市场新闻并存入公共原始数据区 {OPENCLAW_DATA_DIR}/news/raw/
 ---
 
-# Invest News Skill (Raw Ingestion)
+# Invest News Skill
 
 ## 核心职责
 
-`invest-news` 是纯采集技能，只负责：
-- 采集原始新闻事实
-- 做最小去重（避免重复落盘）
-- 追加写入 `~/.openclaw/workspace/data/news/raw/YYYY-MM-DD.jsonl`
-
-**绝不做**：
-- 真实性核实
-- 重要性排序
-- 观点总结
-- 投资判断与结论分发
-- 碰 `data/companies/` 目录（那是 invest-doc-router 和 invest-analysis 的职责）
+纯采集技能——采集原始新闻事实、最小去重、追加写入 JSONL。
+**绝不做**：真实性核实、重要性排序、观点总结、投资判断、碰 `{OPENCLAW_DATA_DIR}/companies/` 目录。
 
 ## 关键路径
 
 | 用途 | 路径 |
 |---|---|
-| 公司配置 | `~/.openclaw/workspace/data/references/companies.json` |
-| 新闻落盘 | `~/.openclaw/workspace/data/news/raw/YYYY-MM-DD.jsonl` |
+| 公司配置 | `{OPENCLAW_DATA_DIR}/references/companies.json` |
+| 新闻落盘 | `{OPENCLAW_DATA_DIR}/news/raw/YYYY-MM-DD.jsonl` |
+| 格式与搜索策略 | 读取 `references/news-schema.md` |
 
-## 采集流程
+## 执行步骤
 
-### Step 1：读取公司配置
+1. 读取 `references/news-schema.md` 获取 JSON 落盘格式和自我进化规则
+2. 读取 `companies.json`，获取 brands、competitors、industry_keywords
+3. 按 `market` 字段差异化搜索（见下方搜索技巧）
+4. 全维度搜索：公司名 + 品牌 + 竞品 + 行业关键词，聚焦最近 24 小时
+5. 去重（同一天 + 同公司 + 同标题 + 同来源 = 重复）后追加写入 JSONL
+6. 如发现新竞品/品牌/关键词，按 `references/news-schema.md` 中的自我进化规则处理
 
-读取 `companies.json`，获取目标公司的 brands、competitors、industry_keywords 等字段，用于构造搜索查询。
+## 执行方式（双引擎复合采集策略）
 
-### Step 2：联网搜索采集（全球化策略）
+**你必须采用“网络搜索 + AKShare”的双引擎策略，获取复合消息面，而不仅依赖单一信源。**
 
-使用 Agent 自带的 web search 能力，根据 `companies.json` 中的 `market` 字段采用差异化搜索策略：
+### 步骤（必须使用工具真实执行，绝不脑补）
 
-- **针对 CN / HK 市场**：优先中文财经信息源（财联社、东方财富、同花顺、雪球、36Kr、界面新闻等）。
-- **针对 US / Global 市场**：
-  - **核心信源**：必须检索全球顶级信源（Reuters, Bloomberg, CNBC, Seeking Alpha, Investing.com）。
-  - **检索语言**：必须使用**英文名称/别名**进行检索，确保抓取到第一手全球战略信息。
-  - **语言处理**：归档时 `title` 可保留原文，但 `content` 必须包含 Agent 翻译后的中文核心摘要。
-- **全维度搜索**：
-  - 公司维度：公司名/别名 + "最新消息" / "Latest News"
-  - 品牌维度：每个 brand + "新闻"
-  - 竞品维度：每个 competitor + 相关动态
-- 聚焦最近 24 小时内的新闻。
+1. **引擎一：宏观舆情与竞品采集**。你必须**分多次独立真实地调用** `web_search` 工具：
+   - 搜索**主体公司**：`{公司名} 最新消息 今日`
+   - 搜索**竞品动态**：查阅 `companies.json`，搜索 `{竞品名称} 最新消息`
+   - 搜索**行业动态**：查阅 `companies.json`，搜索 `{行业关键词} 趋势 今日`
 
-### Step 3：去重与落盘
+2. **引擎二：主体盘面采集**。调用你的终端工具（如 `exec`），**真实执行以下脚本**（AKShare 脚本会自动将其结果落盘，你无需手动处理它的输出）：
+   ```bash
+   python3 skills/invest-news/scripts/fetch_news.py --subject <公司名>
+   ```
 
-对搜索结果提取标准字段，去重后追加写入当日 JSONL 文件。
+3. **数据组装**。把你用 `web_search` 搜回来的主体、竞品、行业动态，严格按照 `references/news-schema.md` 提取并组装为 JSON 格式。
 
-去重规则：同一天 + 同公司 + 同标题 + 同来源 = 重复，跳过。
+4. **真实落盘追加写入（极度危险区）**。**严禁使用写文件工具（如 fs_write）去写 JSONL 文件（会覆盖清空数据）！** 你**必须**调用终端工具（如 `exec`），执行以下命令将你组装好的 JSON 记录严格**追加**到物理文件中（有几条记录就执行几次追加）：
+   ```bash
+   echo '{"ts": "...", "source": "...", ...}' >> {OPENCLAW_DATA_DIR}/news/raw/YYYY-MM-DD.jsonl
+   ```
 
-### 落盘格式
+5. **生成流水账（Metadata）**。调用写文件工具，将你 `web_search` 写入的成功条数，生成元数据写入以下路径：
+   `{OPENCLAW_DATA_DIR}/news/raw/metadata/run_{时间戳}_{随机ID}.json`
 
-每条新闻一行 JSON：
+6. 如搜索均无结果，记录空结果即可，绝不编造。
 
-```json
-{
-  "ts": "2026-03-30 14:22:00",
-  "source": "财联社",
-  "title": "新闻标题",
-  "content": "新闻正文或摘要",
-  "url": "https://...",
-  "company": "tme",
-  "company_name": "腾讯音乐娱乐",
-  "company_symbol": "01698",
-  "company_market": "HK",
-  "match_type": "company|brand|competitor|industry",
-  "match_keyword": "QQ音乐"
-}
-```
+### 搜索技巧（防反爬）
 
-## 执行方式
+- **不要**在搜索词中使用 `site:xxx.com` 限定特定网站
+- **不要**直接访问/抓取目标网站页面（会触发机器人检测）
+- 只通过搜索引擎的通用搜索获取结果（搜索结果摘要已包含足够信息）
+- CN/HK 市场：搜索 `{公司名} 最新消息 今日`、`{品牌名} 新闻`
+- US/Global 市场：搜索 `{company_english_name} latest news today`、`{brand} news`（content 字段需含中文摘要）
+- 每次搜索保持关键词简短通用，多次搜索覆盖不同维度（公司/品牌/竞品/行业）
+- 如果某次搜索被拦截，**换一种关键词表述重试**，不要放弃
 
-### 交互模式（用户对话中触发）
+### 禁止事项
 
-Agent 按照本文档指令直接执行：用内置 web search 搜索，按格式写入 JSONL。
+- **禁止** 跳过 `web_search` 仅依赖 AKShare，或跳过 AKShare 仅依赖 `web_search`（需提供多维复合消息面）。
+- **禁止** 直接编写虚构新闻，未搜到内容时请如实反馈空结果。
 
-### 批量模式（cron 自动触发）
+## 硬约束
 
-```bash
-python3 {baseDir}/scripts/fetch_news.py --date YYYY-MM-DD
-```
-
-注意：fetch_news.py 依赖 AkShare（需额外安装 `pip install akshare`），作为 web search 不可用时的备用方案。
-
-## 执行规则
-
-- **只写事实，不写观点**
-- **只做简单去重，不做深度加工**
-- **失败可回退为空结果，不用推断或补写**
-- **允许空结果，不凑数、不补充无关内容**
-- **可由 cron 自动触发**
-
-## 自我进化机制 (Self-evolving Radar)
-
-新闻采集不是被动抓取，而是一个能自我生长的雷达。
-
-### 触发条件
-
-在采集或阅读新闻的过程中，如果发现：
-- 目标公司出现了新的竞品（如腾讯音乐冒出新对手"某某音乐"）
-- 出现了新的旗下品牌或产品线
-- 出现了新的行业关键词或趋势
-
-### 执行方式
-
-**assistant 执行时**：直接编辑 `~/.openclaw/workspace/data/references/companies.json`，在对应公司的 `competitors`、`brands` 或 `industry_keywords` 数组中增减条目。
-
-**value_* agent 执行时**：不直接编辑 companies.json（防止多 agent 并发写入冲突）。改为将发现记录到 `memory/YYYY-MM-DD.md`，格式如下：
-
-```markdown
-## [HH:MM] 雷达更新建议
-- 公司: tme
-- 字段: competitors
-- 操作: 新增 "某某音乐"
-- 原因: 在搜索新闻时发现该竞品频繁出现
-```
-
-assistant 在下次执行 invest-news 时读取 value_* 的建议并统一更新。
-
-### 闭环
-
-```
-搜索新闻 → 发现新竞品/关键词 → 更新 companies.json → 下次搜索覆盖更广
-```
-
-### 约束
-
-- 新增条目前先确认不重复
-- 删除条目需谨慎，仅在确认该关联已失效时才移除
-- 每次更新后在当日 news raw 中记一条 `{"type": "radar_update", ...}` 日志
+1. 只写事实，不写观点
+2. 只做简单去重，不做深度加工
+3. 失败可回退为空结果，不推断或补写
+4. 允许空结果，不凑数

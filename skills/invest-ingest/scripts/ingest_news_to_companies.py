@@ -142,6 +142,7 @@ def load_company_industry_map():
 
 def main():
     args = parse_args()
+    # Fixed Path: Ingest from DATA_ROOT/news/raw
     news_raw_path = os.path.join(DATA_ROOT, "news", "raw", f"{args.date}.jsonl")
     items = read_jsonl(news_raw_path)
     if not items:
@@ -165,10 +166,10 @@ def main():
                 grouped_ind.setdefault(industry_id, []).append(item)
 
     total_raw_saved = 0
-    state_path = os.path.abspath(os.path.join(DATA_ROOT, "..", "state", "ingest_state.jsonl"))
+    # Fixed Path: State in DATA_ROOT/state (per spec)
+    state_path = os.path.join(DATA_ROOT, "state", "ingest_state.jsonl")
     os.makedirs(os.path.dirname(state_path), exist_ok=True)
     
-    # Load state once to avoid O(N^2)
     state_keys = _get_state_keys(state_path)
     new_state_records = []
 
@@ -184,7 +185,6 @@ def main():
             if state_key not in state_keys:
                 new_raws.append(row)
                 new_notes.append(to_note(row))
-                # Add to local set and batch queue
                 state_keys.add(state_key)
                 new_state_records.append({"entity": entity_id, "fp": fp, "action": action})
 
@@ -209,11 +209,15 @@ def main():
     for industry_id, rows in grouped_ind.items():
         process_group(industry_id, rows, "industry")
 
-    # Batch save new state records
     if new_state_records:
         atomic_append_jsonl(state_path, new_state_records)
 
     print(f"Ingest completed for {args.date}: total_raw_saved={total_raw_saved}")
+    
+    # Closure for invest-digest (Finding 4)
+    if total_raw_saved > 0:
+        print("\n[NEXT_STEP_SUGGESTION] New news ingested. Run invest-digest to generate summaries.")
+        
     return 0
 
 if __name__ == "__main__":

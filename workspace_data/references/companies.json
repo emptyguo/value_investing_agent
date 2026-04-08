@@ -98,6 +98,45 @@
       "competitors": [
         "tme"
       ]
+    },
+    {
+      "id": "trip",
+      "name": "携程集团",
+      "symbol": "TCOM",
+      "market": "US",
+      "aliases": [
+        "携程",
+        "Trip.com",
+        "Ctrip",
+        "TCOM"
+      ],
+      "brands": [
+        "携程旅行",
+        "去哪儿",
+        "Trip.com",
+        "天巡",
+        "Skyscanner"
+      ],
+      "competitors": [
+        "飞猪",
+        "美团酒旅",
+        "同程旅行",
+        "Booking",
+        "Expedia"
+      ],
+      "industry_keywords": [
+        "OTA",
+        "在线旅游",
+        "出境游",
+        "酒旅预订",
+        "机酒"
+      ],
+      "industry_id": "ota",
+      "enabled_sources": [
+        "cls",
+        "em"
+      ],
+      "schedule_profile": "cls_high_em_low"
     }
   ]
 }

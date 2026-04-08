@@ -13,3 +13,12 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+workspace_data/
+tests/
+docs/
+.pytest_cache/
+lark_sync/
+.env
+
+# Backups
+*.bak
